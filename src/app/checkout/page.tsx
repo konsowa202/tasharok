@@ -384,7 +384,7 @@ export default function CheckoutPage() {
             </div>
           </div>
 
-          <div className="lg:col-span-4 bg-white rounded-3xl p-6 border border-gray-100 shadow-xl space-y-6">
+          <div className="lg:col-span-4 lg:sticky lg:top-24 bg-white rounded-3xl p-6 border border-gray-100 shadow-xl space-y-6">
             <h3 className="font-extrabold text-base text-gray-900 border-b border-gray-100 pb-3">
               المنتجات والخدمات المشمولة في الحجز
             </h3>
