@@ -14,6 +14,8 @@ export interface Product {
   category_name?: string;
   service_duration_minutes?: number;
   service_location_type?: 'at_merchant' | 'home' | 'both';
+  is_timer_active?: boolean;
+  offer_end_date?: string | null;
 }
 
 export interface ServiceCategory {
