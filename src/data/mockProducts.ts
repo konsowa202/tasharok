@@ -19,6 +19,8 @@ export interface Product {
   service_booking_notes?: string;
   service_includes?: string[];
   created_at?: string;
+  is_timer_active?: boolean;
+  offer_end_date?: string | null;
 }
 
 export const MOCK_PRODUCTS: Product[] = [
