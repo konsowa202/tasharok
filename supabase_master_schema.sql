@@ -7,6 +7,11 @@
 -- =============================================================================
 DROP TABLE IF EXISTS public.page_views CASCADE;
 DROP TABLE IF EXISTS public.advertisements CASCADE;
+DROP TABLE IF EXISTS public.negotiation_messages CASCADE;
+DROP TABLE IF EXISTS public.negotiations CASCADE;
+DROP TABLE IF EXISTS public.admin_merchant_notes CASCADE;
+DROP TABLE IF EXISTS public.points_transactions CASCADE;
+DROP TABLE IF EXISTS public.system_settings CASCADE;
 DROP TABLE IF EXISTS public.reservations CASCADE;
 DROP TABLE IF EXISTS public.products CASCADE;
 DROP TABLE IF EXISTS public.merchant_service_locations CASCADE;
@@ -51,6 +56,7 @@ CREATE TABLE public.profiles (
     role public.user_role NOT NULL DEFAULT 'customer',
     full_name TEXT NOT NULL,
     phone TEXT,
+    points_balance INT NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -109,6 +115,9 @@ CREATE TABLE public.products (
     service_location_type public.service_location_type DEFAULT 'at_merchant',
     service_booking_notes TEXT,
     service_includes TEXT[],
+    admin_notes TEXT,
+    offer_end_date TIMESTAMPTZ,
+    is_timer_active BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -163,6 +172,49 @@ CREATE TABLE public.faqs (
     answer TEXT NOT NULL,
     sort_order INT NOT NULL DEFAULT 0,
     status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE public.system_settings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    product_point_rate NUMERIC(10, 2) NOT NULL DEFAULT 1.0, 
+    service_point_rate NUMERIC(10, 2) NOT NULL DEFAULT 2.0, 
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE public.points_transactions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    amount INT NOT NULL,
+    transaction_type TEXT NOT NULL CHECK (transaction_type IN ('earned', 'spent', 'adjusted')),
+    description TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE public.admin_merchant_notes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    merchant_id UUID NOT NULL REFERENCES public.merchant_profiles(merchant_id) ON DELETE CASCADE,
+    admin_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    note TEXT NOT NULL,
+    is_read BOOLEAN NOT NULL DEFAULT false,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE public.negotiations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    customer_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    merchant_id UUID NOT NULL REFERENCES public.merchant_profiles(merchant_id) ON DELETE CASCADE,
+    product_id UUID NOT NULL REFERENCES public.products(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE public.negotiation_messages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    negotiation_id UUID NOT NULL REFERENCES public.negotiations(id) ON DELETE CASCADE,
+    sender_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    message TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -302,6 +354,33 @@ ALTER TABLE public.faqs ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Testimonials viewable by everyone" ON public.testimonials FOR SELECT USING (status = 'approved' OR public.is_admin());
 CREATE POLICY "FAQs viewable by everyone" ON public.faqs FOR SELECT USING (status = 'active' OR public.is_admin());
 
+-- Points & Settings
+ALTER TABLE public.system_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.points_transactions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Settings viewable by everyone" ON public.system_settings FOR SELECT USING (true);
+CREATE POLICY "Admins manage settings" ON public.system_settings FOR ALL USING (public.is_admin());
+CREATE POLICY "Users view own points history" ON public.points_transactions FOR SELECT USING (user_id = auth.uid() OR public.is_admin());
+CREATE POLICY "Admins manage points history" ON public.points_transactions FOR ALL USING (public.is_admin());
+
+-- Admin Merchant Notes
+ALTER TABLE public.admin_merchant_notes ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Merchants view own notes" ON public.admin_merchant_notes FOR SELECT USING (merchant_id = auth.uid() OR public.is_admin());
+CREATE POLICY "Admins manage merchant notes" ON public.admin_merchant_notes FOR ALL USING (public.is_admin());
+
+-- Negotiations
+ALTER TABLE public.negotiations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.negotiation_messages ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Customers view own negotiations" ON public.negotiations FOR SELECT USING (customer_id = auth.uid() OR merchant_id = auth.uid() OR public.is_admin());
+CREATE POLICY "Customers insert negotiations" ON public.negotiations FOR INSERT WITH CHECK (customer_id = auth.uid());
+CREATE POLICY "Merchants and Admins update negotiations" ON public.negotiations FOR UPDATE USING (merchant_id = auth.uid() OR public.is_admin());
+CREATE POLICY "Participants view messages" ON public.negotiation_messages FOR SELECT USING (
+    EXISTS (SELECT 1 FROM public.negotiations n WHERE n.id = negotiation_messages.negotiation_id AND (n.customer_id = auth.uid() OR n.merchant_id = auth.uid())) 
+    OR public.is_admin()
+);
+CREATE POLICY "Participants insert messages" ON public.negotiation_messages FOR INSERT WITH CHECK (
+    EXISTS (SELECT 1 FROM public.negotiations n WHERE n.id = negotiation_messages.negotiation_id AND (n.customer_id = auth.uid() OR n.merchant_id = auth.uid() OR public.is_admin()))
+);
+
 -- =============================================================================
 -- 7. STORAGE BUCKET (Products)
 -- =============================================================================
@@ -322,6 +401,9 @@ CREATE POLICY "Users can delete their own uploads" ON storage.objects FOR DELETE
 -- =============================================================================
 -- 8. SEED DATA
 -- =============================================================================
+
+-- System Settings
+INSERT INTO public.system_settings (product_point_rate, service_point_rate) VALUES (1.0, 2.0);
 
 -- Auth Users (Fixed for FK constraints)
 INSERT INTO auth.users (id, instance_id, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at, role, aud)

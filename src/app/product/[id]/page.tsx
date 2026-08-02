@@ -27,7 +27,10 @@ import {
   Check,
   Info,
   ChevronRight,
+  Zap,
+  MessageSquare,
 } from 'lucide-react';
+import CountdownTimer from '@/components/CountdownTimer';
 
 interface ProductDetail extends Product {
   item_type?: 'product' | 'service';
@@ -36,6 +39,8 @@ interface ProductDetail extends Product {
   service_booking_notes?: string;
   service_includes?: string[];
   service_category_name?: string;
+  offer_end_date?: string | null;
+  is_timer_active?: boolean;
 }
 
 const locationLabels: Record<'at_merchant' | 'home' | 'both', string> = {
@@ -59,22 +64,15 @@ export default function SingleProductPage() {
 
   useEffect(() => {
     const fetchProduct = async () => {
-      const foundMock = MOCK_PRODUCTS.find((p) => p.id === productId);
-      if (foundMock) {
-        setProduct(foundMock);
-        setLoading(false);
-        return;
-      }
-
       try {
         const supabase = createClient();
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from('products')
           .select('*, service_categories(name), merchant_profiles(store_name)')
           .eq('id', productId)
           .single();
 
-        if (data) {
+        if (data && !error) {
           const merchantProfile = Array.isArray(data.merchant_profiles)
             ? data.merchant_profiles[0]
             : data.merchant_profiles;
@@ -103,13 +101,21 @@ export default function SingleProductPage() {
             service_booking_notes: data.service_booking_notes,
             service_includes: data.service_includes,
             service_category_name: serviceCategory?.name,
+            offer_end_date: data.offer_end_date,
+            is_timer_active: data.is_timer_active,
           });
+          setLoading(false);
+          return;
         }
-      } catch {
+      } catch (err) {
         // Fallback
-      } finally {
-        setLoading(false);
       }
+
+      const foundMock = MOCK_PRODUCTS.find((p) => p.id === productId);
+      if (foundMock) {
+        setProduct(foundMock as ProductDetail);
+      }
+      setLoading(false);
     };
 
     fetchProduct();
@@ -280,15 +286,7 @@ export default function SingleProductPage() {
             )}
 
             {/* Modern Progress Section */}
-            <div className="mt-auto pt-6 border-t border-slate-100">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-[#22BC9F]" /> المتبقي لاكتمال المجموعة
-                </span>
-                <span className="text-xs font-bold text-[#007FB7] bg-[#007FB7]/10 px-2 py-1 rounded-md">
-                  {product.target_quantity - product.current_reserved_quantity} حجوزات
-                </span>
-              </div>
+            <div className="mt-8 pt-6 border-t border-slate-100">
               <ProgressBar current={product.current_reserved_quantity} target={product.target_quantity} />
             </div>
           </div>
@@ -297,16 +295,26 @@ export default function SingleProductPage() {
           <div className="lg:col-span-3">
             <div className="sticky top-24 bg-white rounded-3xl p-6 border border-slate-200 shadow-xl shadow-slate-200/40">
               
+              {/* Offer Timer */}
+              {product.is_timer_active && product.offer_end_date && (
+                <div className="mb-6">
+                  <CountdownTimer endDate={product.offer_end_date} />
+                </div>
+              )}
+
               {/* Price */}
-              <div className="mb-6">
-                <span className="text-sm text-slate-500 font-bold block mb-1">السعر للمجموعة:</span>
-                <div className="flex items-end gap-2">
-                  <div className="text-3xl font-black text-[#1E293B] leading-none">
-                    {formatPrice(product.tasharok_price)} <span className="text-xs text-slate-500 font-bold">ر.س</span>
+              <div className="mb-6 flex flex-col">
+                <span className="text-sm text-slate-500 font-bold block mb-2">السعر للمجموعة:</span>
+                <div className="flex items-center gap-3 mb-1">
+                  <div className="text-sm text-slate-400 font-bold">
+                    بدلاً من <span className="text-red-500 line-through decoration-red-500/50 decoration-2">{formatPrice(product.original_price)} ر.س</span>
                   </div>
                 </div>
-                <div className="text-sm text-slate-400 line-through font-bold mt-2">
-                  بدلاً من {formatPrice(product.original_price)} ر.س
+                <div className="flex items-end gap-2">
+                  <div className="text-4xl font-black text-[#22BC9F] leading-none">
+                    {formatPrice(product.tasharok_price)}
+                  </div>
+                  <span className="text-sm text-slate-500 font-bold mb-1">ر.س</span>
                 </div>
               </div>
 
@@ -324,17 +332,49 @@ export default function SingleProductPage() {
               <div className="space-y-3">
                 <button
                   onClick={handleReserveNow}
-                  className="w-full py-3.5 rounded-xl font-black text-sm text-white bg-[#1E293B] hover:bg-black transition-colors flex items-center justify-center gap-2 shadow-md"
+                  className="w-full py-3.5 rounded-xl font-black text-sm text-white bg-[#22BC9F] hover:bg-[#1da88d] transition-colors flex items-center justify-center gap-2 shadow-md shadow-[#22BC9F]/20"
                 >
-                  {isService ? 'احجز الآن' : `انضم للمجموعة`}
+                  {isService ? 'احجز الآن ضمن المجموعة' : `انضم للمجموعة`}
                 </button>
                 
+                {/* Direct Buy */}
                 <button
-                  onClick={handleAddToCartOnly}
-                  className="w-full py-3 rounded-xl font-bold text-xs text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
+                  onClick={() => {
+                    if (!user) {
+                      router.push(`/login?redirect_to=/product/${product.id}`);
+                      return;
+                    }
+                    addToCart(product, quantity, true);
+                    router.push('/cart');
+                  }}
+                  className="w-full py-3 rounded-xl font-bold text-xs text-[#22BC9F] bg-[#22BC9F]/5 hover:bg-[#22BC9F]/10 border border-[#22BC9F]/20 transition-colors flex items-center justify-center gap-2"
                 >
-                  <ShoppingCart className="w-4 h-4" /> أضف للسلة
+                  <Zap className="w-4 h-4" />
+                  شراء فوري بدون مجموعة ({formatPrice(product.original_price)} ر.س)
                 </button>
+
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <button
+                    onClick={handleAddToCartOnly}
+                    className="w-full py-2.5 rounded-xl font-bold text-xs text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <ShoppingCart className="w-4 h-4" /> للسلة
+                  </button>
+                  
+                  {/* Negotiate */}
+                  <button
+                    onClick={() => {
+                      if (!user) {
+                        router.push(`/login?redirect_to=/negotiate/${product.id}`);
+                        return;
+                      }
+                      router.push(`/negotiate/${product.id}`);
+                    }}
+                    className="w-full py-2.5 rounded-xl font-bold text-xs text-[#22BC9F] bg-white border border-[#22BC9F]/30 hover:bg-[#22BC9F]/5 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <MessageSquare className="w-4 h-4" /> تفاوض مع التاجر
+                  </button>
+                </div>
               </div>
 
               {/* Minimalist Trust Badge */}

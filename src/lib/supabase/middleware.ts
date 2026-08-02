@@ -39,8 +39,10 @@ export async function updateSession(request: NextRequest) {
   const isMerchantRoute = pathname.startsWith('/merchant');
   const isAdminRoute = pathname.startsWith('/admin');
 
+  const demoRole = request.cookies.get('tasharok_demo_role')?.value;
+
   if (isCheckoutRoute || isMerchantRoute || isAdminRoute) {
-    if (!user) {
+    if (!user && !demoRole) {
       const url = request.nextUrl.clone();
       url.pathname = '/login';
       url.searchParams.set('redirect_to', pathname);
@@ -49,13 +51,17 @@ export async function updateSession(request: NextRequest) {
 
     // Role verification for Admin and Merchant routes
     if (isAdminRoute || isMerchantRoute) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single();
+      let userRole = demoRole;
 
-      const userRole = profile?.role || user.user_metadata?.role || 'customer';
+      if (user && !demoRole) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single();
+
+        userRole = profile?.role || user.user_metadata?.role || 'customer';
+      }
 
       if (isAdminRoute && userRole !== 'admin') {
         const url = request.nextUrl.clone();

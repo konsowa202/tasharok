@@ -21,6 +21,8 @@ function mapProductRow(item: any, fallbackImage: string): Product {
     store_name: item.merchant_profiles?.store_name || 'تاجر تشارك',
     category_name: item.service_categories?.name,
     service_duration_minutes: item.service_duration_minutes,
+    is_timer_active: item.is_timer_active,
+    offer_end_date: item.offer_end_date,
   };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */

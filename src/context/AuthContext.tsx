@@ -194,6 +194,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       created_at: new Date().toISOString(),
     } as unknown as User);
     localStorage.setItem('tasharok_demo_role', role);
+    document.cookie = `tasharok_demo_role=${role}; path=/; max-age=31536000`;
   };
 
   const setDemoUserRole = (role: UserRole) => {
@@ -368,6 +369,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setMerchantProfile(null);
     setIsDemoMode(false);
     localStorage.removeItem('tasharok_demo_role');
+    document.cookie = 'tasharok_demo_role=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
     setIsLoading(false);
   };
 

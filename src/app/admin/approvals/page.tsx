@@ -47,7 +47,13 @@ export default function AdminApprovals() {
   };
 
   const handleReject = async (id: string) => {
-    await supabase.from('products').update({ status: 'rejected' }).eq('id', id);
+    const reason = window.prompt('يرجى كتابة سبب الرفض ليتم إرساله للتاجر:');
+    if (reason === null) return;
+    
+    await supabase.from('products').update({ 
+      status: 'rejected',
+      admin_notes: reason
+    }).eq('id', id);
     fetchPending();
   };
 

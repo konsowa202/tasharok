@@ -16,12 +16,13 @@ export interface CartItem {
   service_location_type?: string;
   quantity: number;
   payment_method?: 'full_payment' | 'deposit' | 'cash_on_delivery';
+  is_direct_buy?: boolean;
 }
 
 interface CartContextType {
   cart: CartItem[];
-  addToCart: (product: Omit<CartItem, 'quantity'>, qty?: number) => void;
-  removeFromCart: (productId: string) => void;
+  addToCart: (product: Omit<CartItem, 'quantity' | 'is_direct_buy'>, qty?: number, isDirectBuy?: boolean) => void;
+  removeFromCart: (productId: string, isDirectBuy?: boolean) => void;
   updateQuantity: (productId: string, quantity: number) => void;
   clearCart: () => void;
   totalOriginalPrice: number;
@@ -51,19 +52,19 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
     localStorage.setItem('tasharok_cart', JSON.stringify(items));
   };
 
-  const addToCart = (product: Omit<CartItem, 'quantity'>, qty: number = 1) => {
-    const existingIndex = cart.findIndex((item) => item.id === product.id);
+  const addToCart = (product: Omit<CartItem, 'quantity' | 'is_direct_buy'>, qty: number = 1, isDirectBuy: boolean = false) => {
+    const existingIndex = cart.findIndex((item) => item.id === product.id && !!item.is_direct_buy === isDirectBuy);
     if (existingIndex > -1) {
       const updated = [...cart];
       updated[existingIndex].quantity += qty;
       saveCart(updated);
     } else {
-      saveCart([...cart, { ...product, quantity: qty }]);
+      saveCart([...cart, { ...product, quantity: qty, is_direct_buy: isDirectBuy }]);
     }
   };
 
-  const removeFromCart = (productId: string) => {
-    const updated = cart.filter((item) => item.id !== productId);
+  const removeFromCart = (productId: string, isDirectBuy: boolean = false) => {
+    const updated = cart.filter((item) => !(item.id === productId && !!item.is_direct_buy === isDirectBuy));
     saveCart(updated);
   };
 
@@ -81,7 +82,7 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   const totalOriginalPrice = cart.reduce((acc, item) => acc + item.original_price * item.quantity, 0);
-  const totalTasharokPrice = cart.reduce((acc, item) => acc + item.tasharok_price * item.quantity, 0);
+  const totalTasharokPrice = cart.reduce((acc, item) => acc + (item.is_direct_buy ? item.original_price : item.tasharok_price) * item.quantity, 0);
   const totalSavings = totalOriginalPrice - totalTasharokPrice;
   const cartCount = cart.reduce((acc, item) => acc + item.quantity, 0);
 
